@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sched.h>
+#include <sys/stat.h>
 
 #define STACK_SIZE (1024 * 1024)
 
@@ -17,6 +18,8 @@ int child_fn(void *arg) {
     ChildArgs *ca = arg;
     char *args[] = { ca->program, NULL };
     char *env[]  = { "PATH=/usr/bin:/bin", NULL };
+    chroot("/srv/sandbox-rootfs");
+    chdir("/");
     execve(ca->program, args, env);
     perror("execve");
     return 1;
