@@ -4,7 +4,7 @@ case "$1" in
 		echo "Running Test Suite for milestone 1"
 		cd "milestone1"
 		binaries=(*)
-		echo "${binaries[@]}"
+		echo -e "${binaries[@]}\n"
 		for binary in "${binaries[@]}"; do
 			stdout=$("./$binary")
 			if echo "$stdout" | grep -q "FAIL"; then
@@ -22,7 +22,7 @@ case "$1" in
 		echo "Running Test Suite for milestone 2"
 		cd "milestone2"
 		binaries=(*)
-		echo "${binaries[@]}"
+		echo -e "${binaries[@]}\n"
 		for binary in "${binaries[@]}"; do
 			stdout=$("./$binary")
 			if echo "$stdout" | grep -q "FAIL"; then
@@ -40,7 +40,7 @@ case "$1" in
 		echo "Running Test Suite for final"
                 cd "milestone2"
                 binaries=(*)
-                echo "${binaries[@]}"
+                echo -e "${binaries[@]}\n"
                 for binary in "${binaries[@]}"; do
                         stdout=$("./$binary")
                         if echo "$stdout" | grep -q "FAIL"; then
