@@ -32,7 +32,7 @@ int main(int argc, char* argv[]){
 	}
 
 	if (strcmp(argv[1], "create") == 0) {
-    		if (argc < 4) {
+    		if (argc < 3) {
         		printf("Usage: sandbox create <name>\n");
         	return 1;
     		}
