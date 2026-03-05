@@ -11,3 +11,5 @@ sudo debootstrap --arch=amd64 --variant=minbase \
     noble /srv/sandbox-rootfs http://archive.ubuntu.com/ubuntu
     
     to get the desktop installed
+
+For permissions, do sudo chmod -R 755 /srv/sandbox-rootfs
