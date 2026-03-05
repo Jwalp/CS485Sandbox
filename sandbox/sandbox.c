@@ -33,11 +33,11 @@ int main(int argc, char* argv[]){
 
 	if (strcmp(argv[1], "create") == 0) {
     		if (argc < 4) {
-        		printf("Usage: sandbox create <name> <rootfs>\n");
+        		printf("Usage: sandbox create <name>\n");
         	return 1;
     		}
     		char *name   = argv[2];
-    		char *rootfs = argv[3];
+    		char *rootfs = "/var/sandbox";
 //    		printf("Creating sandbox '%s' with rootfs '%s'\n", name, rootfs);
     		char path[256];
                 snprintf(path, sizeof(path), "/tmp/sandbox_%s.conf", name);
