@@ -34,6 +34,7 @@ case "$1" in
 				echo "ERROR ENCOUNTERED IN $binary"
 			fi
 			echo -e "\n"
+		done
 		;;
 	"final")
 		echo "Running Test Suite for final"
@@ -51,6 +52,7 @@ case "$1" in
                                 echo "ERROR ENCOUNTERED IN $binary"
                         fi
                         echo -e "\n"
+		done
 		;;
 	"")
 		echo "INFO: Usage: ./testsuite.sh (milestone1|milestone2|final)"
