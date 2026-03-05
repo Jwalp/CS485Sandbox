@@ -37,7 +37,7 @@ int main(int argc, char* argv[]){
         	return 1;
     		}
     		char *name   = argv[2];
-    		char *rootfs = "/var/sandbox";
+    		char *rootfs = "/var/sandbox"; // we will try to retain a static sandbox path for consistency (and security purposes)
 //    		printf("Creating sandbox '%s' with rootfs '%s'\n", name, rootfs);
     		char path[256];
                 snprintf(path, sizeof(path), "/tmp/sandbox_%s.conf", name);
