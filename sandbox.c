@@ -12,6 +12,7 @@
 #include <signal.h>
 
 #define STACK_SIZE (1024 * 1024)
+#define GITHUB_MOUNT "/home/pranav/git/CS485Student"
 
 typedef struct {
     char *program;
@@ -100,7 +101,7 @@ int main(int argc, char* argv[]) {
          * CLONE_NEWUTS  — child gets its own hostname
          * CLONE_NEWIPC  — child gets its own IPC objects
          * CLONE_NEWUSER — child gets its own user/group ID mappings */
-        if (mount("/home/pranav/git/CS485Sandbox", "/srv/sandbox-rootfs/mnt/testsuite", NULL, MS_BIND, NULL) < 0) perror("mount");
+        if (mount(GITHUB_MOUNT, "/srv/sandbox-rootfs/mnt/testsuite", NULL, MS_BIND, NULL) < 0) perror("mount");
 
         int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
                     CLONE_NEWIPC | CLONE_NEWUSER | SIGCHLD;
