@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
 
 		/* Write rootfs path into config file */
 		FILE *f = fopen(path, "w");
-		if (f == NULL) {
+		if (!f) {
 			printf("Error: could not create config file\n");
 			return 1;
 		}
@@ -84,8 +84,6 @@ int main(int argc, char* argv[]) {
 		if (argc >= 4) fprintf(f, "mount=%s\n", mount_path); // write mount path
 		fclose(f);
 
-		// FIX NETWORK ACCESS (currently ping does not work)
-		// chmod("/srv/sandbox-rootfs/bin/ping", 04755);
 		remove("/srv/sandbox-rootfs/etc/shadow"); // removes /etc/shadow
 
 		printf("Sandbox '%s' created\n", name);
@@ -97,6 +95,19 @@ int main(int argc, char* argv[]) {
 		}
 		char *name    = argv[2];
 		char *program = argv[3];
+
+		// Initially test if our config file exists, if not, we simply deny launch
+		char conf_path[256];
+		snprintf(conf_path, sizeof(conf_path), "/tmp/sandbox_%s.conf", name);
+		FILE *f = fopen(conf_path, "r");
+		if (f == NULL) {
+			printf("ERROR: could not find config file for %s\n", name);
+			printf("INFO: Your sandbox likely hasn't been created\n");
+			return 1;
+		} else {
+			printf("INFO: Config file successfully found\n");	
+			fclose(f);
+		}
 
 		/* Create a pipe for synchronization.
 		 * Parent writes uid/gid maps, then closes write end.
@@ -119,6 +130,23 @@ int main(int argc, char* argv[]) {
 		
 		// required for ping to work, currently runs on each launch for consistency
 		chmod("/srv/sandbox-rootfs/bin/ping", 04755);
+		
+		// mount shared folder with read only permissions
+		mkdir("/srv/sandbox-rootfs/mnt/shared", 0755); // creates shared folder for mounting
+                
+		f = fopen(conf_path, "r");
+		char line[256];
+                while (fgets(line, sizeof(line), f)) {
+                        char mount_path[256];
+                        if (sscanf(line, "mount=%255s", mount_path) == 1) {
+                                // find mount and notify successful mount (with error handling)
+                                if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND, NULL) < 0) perror("MOUNT");
+                                if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL) < 0) perror ("REMOUNT");
+ 	                        else printf("INFO: Successfully mounted directory %s\n", mount_path);
+				break;
+                        }
+                }
+                fclose(f);
 
 		pid_t pid = clone(child_fn, stack + STACK_SIZE, flags, &ca);
 		if (pid < 0) { perror("clone"); free(stack); return 1; }
@@ -155,24 +183,9 @@ int main(int argc, char* argv[]) {
 		close(ca.ready_pipe[1]);
 
 		/* Save PID to config file so destroy can kill this process */
-		char conf[256];
-		snprintf(conf, sizeof(conf), "/tmp/sandbox_%s.conf", name);
-		FILE *f = fopen(conf, "r");
+		f = fopen(conf_path, "r");
 		if (f) { 
-			mkdir("/srv/sandbox-rootfs/mnt/shared", 0755); // creates shared folder for mounting
-			char line[256];
-			while (fgets(line, sizeof(line), f)) {
-				char mount_path[256];
-				if (sscanf(line, "mount=%255s", mount_path) == 1) {
-					// find mount and notify successful mount
-					if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND, NULL) < 0) perror("MOUNT");
-					else printf("MOUNT: Successfully mounted directory %s", mount_path);
-					break;
-				}
-			}
-
-			fclose(f);
-			FILE *pid_f = fopen(conf, "a");
+			FILE *pid_f = fopen(conf_path, "a");
 			if (pid_f) { fprintf(pid_f, "pid=%d\n", pid); fclose(pid_f); }
 		}
 
@@ -215,10 +228,9 @@ int main(int argc, char* argv[]) {
 			fclose(f);
 			remove(path);
 			printf("Sandbox '%s' destroyed\n", name);
-		} else {
-			printf("ERROR: Sandbox config was not found!");
-			return 1;
 		}
+
+		
 
 	} else {
 		printf("Unknown command: %s\n", argv[1]);
