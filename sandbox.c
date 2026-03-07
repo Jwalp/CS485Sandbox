@@ -12,7 +12,6 @@
 #include <signal.h>
 
 #define STACK_SIZE (1024 * 1024)
-#define GITHUB_MOUNT "/home/pranav/git/CS485Student"
 
 typedef struct {
 	char *program;
@@ -35,7 +34,7 @@ int child_fn(void *arg) {
 	chroot("/srv/sandbox-rootfs");
 	chdir("/");
 	mount("proc", "/proc", "proc", 0, NULL);
-	chmod("/etc/shadow", 0000);
+	chmod("/etc/shadow", 0000); // remove user permissions
 
 	char *args[] = { ca->program, NULL };
 	char *env[]  = { "PATH=/usr/bin:/bin", NULL };
@@ -45,6 +44,11 @@ int child_fn(void *arg) {
 }
 
 int main(int argc, char* argv[]) {
+	if (geteuid() != 0) {
+		printf("sandbox must be run as root (use sudo)\n");
+		return 1;
+	}
+
 	if (argc < 2) {
 		printf("Usage: sandbox <create|launch|destroy>\n");
 		return 1;
@@ -52,10 +56,12 @@ int main(int argc, char* argv[]) {
 
 	if (strcmp(argv[1], "create") == 0) {
 		if (argc < 3) {
-			printf("Usage: sandbox create <name>\n");
+			printf("Usage: sandbox create <name> [SHARED_HOST_FOLDER]\n");
 			return 1;
 		}
 		char *name   = argv[2];
+		if (argc >= 4)
+			char *mount_path = argv[3]; // use this mount path to allow sharing testsuite
 		char *rootfs = "/srv/sandbox-rootfs"; /* static rootfs path */
 
 		/* Build config file path: /tmp/sandbox_<name>.conf */
@@ -75,7 +81,12 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 		fprintf(f, "rootfs=%s\n", rootfs);
+		if (argc >= 4)
+			fprintf(f, "mount=%s\n", mount_path); // write mount path
 		fclose(f);
+
+		// FIX NETWORK ACCESS (currently ping does not work)
+		// chmod("/srv/sandbox-rootfs/bin/ping", 04755);
 
 		printf("Sandbox '%s' created\n", name);
 
@@ -102,7 +113,6 @@ int main(int argc, char* argv[]) {
 		 * CLONE_NEWUTS  — child gets its own hostname
 		 * CLONE_NEWIPC  — child gets its own IPC objects
 		 * CLONE_NEWUSER — child gets its own user/group ID mappings */
-		if (mount(GITHUB_MOUNT, "/srv/sandbox-rootfs/mnt/testsuite", NULL, MS_BIND, NULL) < 0) perror("mount");
 
 		int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
 			CLONE_NEWIPC | CLONE_NEWUSER | SIGCHLD;
@@ -144,12 +154,32 @@ int main(int argc, char* argv[]) {
 		/* Save PID to config file so destroy can kill this process */
 		char conf[256];
 		snprintf(conf, sizeof(conf), "/tmp/sandbox_%s.conf", name);
-		FILE *f = fopen(conf, "a");
-		if (f) { fprintf(f, "pid=%d\n", pid); fclose(f); }
+		FILE *f = fopen(conf, "r");
+		if (f) { 
+			mkdir("/srv/sandbox-rootfs/mnt/shared", 0755); // creates shared folder for mounting
+			char line[256];
+			while (fgets(line, sizeof(line), f)) {
+				char mount_path[256];
+				if (sscanf(line, "mount=%255s", mount_path) == 1) {
+					// find mount and notify successful mount
+					if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND, NULL) < 0) perror("MOUNT");
+					else printf("MOUNT: Successfully mounted directory %s", mount_path);
+					break;
+				}
+			}
+
+			fclose(f);
+			FILE *pid_f = fopen(conf, "a");
+			if (pid_f) { fprintf(pid_f, "pid=%d\n", pid); fclose(pid_f); }
+		}
 
 		/* Wait for sandboxed program to finish */
 		int status;
 		waitpid(pid, &status, 0);
+
+		umount("/srv/sandbox-rootfs/proc");
+		umount("/srv/sandbox-rootfs/mnt/shared");
+
 		free(stack);
 		printf("Program exited with status %d\n", WEXITSTATUS(status));
 
@@ -180,10 +210,12 @@ int main(int argc, char* argv[]) {
 				}
 			}
 			fclose(f);
+			remove(path);
+			printf("Sandbox '%s' destroyed\n", name);
+		} else {
+			printf("ERROR: Sandbox config was not found!");
+			return 1;
 		}
-
-		remove(path);
-		printf("Sandbox '%s' destroyed\n", name);
 
 	} else {
 		printf("Unknown command: %s\n", argv[1]);
