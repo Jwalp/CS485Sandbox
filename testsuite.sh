@@ -1,4 +1,8 @@
 cd "cs485_sandbox_test_suite/bin/public"
+verbose=0
+if [ "$2" == "verbose" ]; then
+	verbose=1
+fi
 case "$1" in
 	"milestone1")
 		echo "Running Test Suite for milestone 1"
@@ -9,11 +13,13 @@ case "$1" in
 			stdout=$("./$binary")
 			if echo "$stdout" | grep -q "FAIL"; then
 				echo "FAILED $binary"
-				echo "$stdout"
 			elif echo "$stdout" | grep -q "PASS"; then
 				echo "PASSED $binary"
 			else
 				echo "ERROR ENCOUNTERED IN $binary"
+			fi
+			if [ $verbose == 1 ]; then
+				echo "$stdout"
 			fi
 			echo -e "\n"
 		done
