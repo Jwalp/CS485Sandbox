@@ -9,7 +9,6 @@ and do
 sudo debootstrap --arch=amd64 --variant=minbase \
     --include=sudo,bash,coreutils,iputils-ping,procps \
     noble /srv/sandbox-rootfs http://archive.ubuntu.com/ubuntu
-    
     to get the desktop installed
 
 For arm64/aarch64 follow these instructions:
