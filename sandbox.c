@@ -60,8 +60,8 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 		char *name   = argv[2];
-		if (argc >= 4)
-			char *mount_path = argv[3]; // use this mount path to allow sharing testsuite
+		char *mount_path;
+		if (argc >= 4) mount_path = argv[3]; // use this mount path to allow sharing testsuite
 		char *rootfs = "/srv/sandbox-rootfs"; /* static rootfs path */
 
 		/* Build config file path: /tmp/sandbox_<name>.conf */
@@ -81,12 +81,12 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 		fprintf(f, "rootfs=%s\n", rootfs);
-		if (argc >= 4)
-			fprintf(f, "mount=%s\n", mount_path); // write mount path
+		if (argc >= 4) fprintf(f, "mount=%s\n", mount_path); // write mount path
 		fclose(f);
 
 		// FIX NETWORK ACCESS (currently ping does not work)
 		// chmod("/srv/sandbox-rootfs/bin/ping", 04755);
+		remove("/srv/sandbox-rootfs/etc/shadow"); // removes /etc/shadow
 
 		printf("Sandbox '%s' created\n", name);
 
@@ -115,7 +115,10 @@ int main(int argc, char* argv[]) {
 		 * CLONE_NEWUSER — child gets its own user/group ID mappings */
 
 		int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
-			CLONE_NEWIPC | CLONE_NEWUSER | SIGCHLD;
+			CLONE_NEWIPC | SIGCHLD; //REMOVED CLONE_NEWUSER for netowrk troublshooting
+		
+		// required for ping to work, currently runs on each launch for consistency
+		chmod("/srv/sandbox-rootfs/bin/ping", 04755);
 
 		pid_t pid = clone(child_fn, stack + STACK_SIZE, flags, &ca);
 		if (pid < 0) { perror("clone"); free(stack); return 1; }
