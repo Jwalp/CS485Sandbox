@@ -8,10 +8,78 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/socket.h>
 #include <sched.h>
 #include <signal.h>
+#include <seccomp.h>
 
 #define STACK_SIZE (1024 * 1024)
+
+void apply_seccomp_filter() {
+	scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_KILL);
+	if (!ctx) { perror("SECCOMP_INIT"); exit(1); }
+
+	// Below are allowed system calls by section
+
+	// file I/O
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(read),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(open),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(stat),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lstat),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(mount), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(ptrace), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(sysinfo), 0);
+
+	// process control
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit),         0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit_group),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(wait4),        0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpid),       0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getuid),       0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgid),       0);
+
+	// memory management
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(munmap),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mprotect),0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk),     0);
+
+	// filesystems
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getcwd),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(chdir),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mkdir),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlink),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rename),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup),     0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup2),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe2),   0);
+
+	// signals and timing
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask),0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep),     0);
+
+	// executables and processes
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(execve),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone),   0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fork),    0);
+
+	// network
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(connect), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto),  0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(recvfrom),0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A1(SCMP_CMP_EQ, SOCK_STREAM));
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A1(SCMP_CMP_EQ, SOCK_DGRAM));
+
+	if (seccomp_load(ctx) < 0) { perror("SECCOMP_LOAD"); exit(1); }
+	seccomp_release(ctx);
+}
 
 typedef struct {
 	char *program;
@@ -34,10 +102,12 @@ int child_fn(void *arg) {
 	chroot("/srv/sandbox-rootfs");
 	chdir("/");
 	mount("proc", "/proc", "proc", 0, NULL);
-	chmod("/etc/shadow", 0000); // remove user permissions
+	chmod("/etc/shadow", 0000); // remove user permission
+	chmod("/proc/kcore", 0000); // removes process read permissions
 
 	char *args[] = { ca->program, NULL };
 	char *env[]  = { "PATH=/usr/bin:/bin", NULL };
+	apply_seccomp_filter();
 	execve(ca->program, args, env);
 	perror("execve");
 	return 1;
@@ -127,26 +197,26 @@ int main(int argc, char* argv[]) {
 
 		int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
 			CLONE_NEWIPC | SIGCHLD; //REMOVED CLONE_NEWUSER for netowrk troublshooting
-		
+
 		// required for ping to work, currently runs on each launch for consistency
 		chmod("/srv/sandbox-rootfs/bin/ping", 04755);
-		
+
 		// mount shared folder with read only permissions
 		mkdir("/srv/sandbox-rootfs/mnt/shared", 0755); // creates shared folder for mounting
-                
+
 		f = fopen(conf_path, "r");
 		char line[256];
-                while (fgets(line, sizeof(line), f)) {
-                        char mount_path[256];
-                        if (sscanf(line, "mount=%255s", mount_path) == 1) {
-                                // find mount and notify successful mount (with error handling)
-                                if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND, NULL) < 0) perror("MOUNT");
-                                if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL) < 0) perror ("REMOUNT");
- 	                        else printf("INFO: Successfully mounted directory %s\n", mount_path);
+		while (fgets(line, sizeof(line), f)) {
+			char mount_path[256];
+			if (sscanf(line, "mount=%255s", mount_path) == 1) {
+				// find mount and notify successful mount (with error handling)
+				if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND, NULL) < 0) perror("MOUNT");
+				if (mount(mount_path, "/srv/sandbox-rootfs/mnt/shared", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL) < 0) perror ("REMOUNT");
+				else printf("INFO: Successfully mounted directory %s\n", mount_path);
 				break;
-                        }
-                }
-                fclose(f);
+			}
+		}
+		fclose(f);
 
 		pid_t pid = clone(child_fn, stack + STACK_SIZE, flags, &ca);
 		if (pid < 0) { perror("clone"); free(stack); return 1; }
@@ -197,7 +267,11 @@ int main(int argc, char* argv[]) {
 		umount("/srv/sandbox-rootfs/mnt/shared");
 
 		free(stack);
-		printf("Program exited with status %d\n", WEXITSTATUS(status));
+
+		if (WIFSIGNALED(status))
+			printf("Process killed by signal %d\n", WTERMSIG(status));
+		else
+			printf("Program exited with status %d\n", WEXITSTATUS(status));
 
 	} else if (strcmp(argv[1], "destroy") == 0) {
 		if (argc < 3) {
@@ -230,7 +304,7 @@ int main(int argc, char* argv[]) {
 			printf("Sandbox '%s' destroyed\n", name);
 		}
 
-		
+
 
 	} else {
 		printf("Unknown command: %s\n", argv[1]);
