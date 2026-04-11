@@ -144,6 +144,8 @@ int child_fn(void *arg) {
         
         unshare(CLONE_NEWNS);
         mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
+	chmod("/srv/sandbox-rootfs/tmp", 01777); // fixes some permission issues with fio
+	chmod("/srv/sandbox-rootfs/dev/null", 0666); // fixes read issues here as well
 
         chroot("/srv/sandbox-rootfs");
         chdir("/");
