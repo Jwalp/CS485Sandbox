@@ -12,70 +12,114 @@
 #include <sched.h>
 #include <signal.h>
 #include <seccomp.h>
+#include <sys/uio.h>
+#include <sys/ioctl.h>
+#include <errno.h> // temporary for debugging
 
 #define STACK_SIZE (1024 * 1024)
 
 void apply_seccomp_filter() {
-	scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_KILL);
+	scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ERRNO(ENOSYS));
 	if (!ctx) { perror("SECCOMP_INIT"); exit(1); }
 
 	// Below are allowed system calls by section
 
 	// file I/O
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(read),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(open),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(stat),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lstat),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(mount), 0);
-	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(ptrace), 0);
-	seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(sysinfo), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(read), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(open), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(stat), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lstat), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pread64), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(writev), 0);
 
 	// process control
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit),         0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit_group),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(wait4),        0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpid),       0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getuid),       0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgid),       0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit_group), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(wait4), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getuid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(arch_prctl), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(set_tid_address), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(set_robust_list), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rseq), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setuid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setgid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setresuid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setresgid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(geteuid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getegid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(poll), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(select), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ppoll), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgroups), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setpgid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpgrp), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setsid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(access), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(prlimit64), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getrandom), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(uname), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getppid), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(newfstatat), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lseek), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fcntl), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(statfs), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents64), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(futex),       0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getrlimit),0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sigaltstack), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(tgkill), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(kill), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone3), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(vfork), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_nanosleep), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pselect6), 0);
+        seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(faccessat2), 0);
+        seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setfsuid), 0);
+        seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setfsgid), 0);
 
 	// memory management
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(munmap),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mprotect),0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk),     0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(munmap), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mprotect), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk), 0);
 
 	// filesystems
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getcwd),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(chdir),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mkdir),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlink),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rename),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup),     0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup2),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe),    0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe2),   0);
-
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getcwd), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(chdir), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mkdir), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlink), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rename), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup2), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pipe2), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(symlink), 0);
+	
 	// signals and timing
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask),0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep),     0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep), 0);
 
 	// executables and processes
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(execve),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone),   0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fork),    0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(execve), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fork), 0);
 
 	// network
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket),  0);
 	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(connect), 0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto),  0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(recvfrom),0);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A1(SCMP_CMP_EQ, SOCK_STREAM));
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 1, SCMP_A1(SCMP_CMP_EQ, SOCK_DGRAM));
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(recvfrom), 0);
+	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 2, SCMP_A0(SCMP_CMP_EQ, AF_INET), SCMP_A1(SCMP_CMP_EQ, SOCK_STREAM));
+        seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 2, SCMP_A0(SCMP_CMP_EQ, AF_INET), SCMP_A1(SCMP_CMP_EQ, SOCK_DGRAM));
 
 	if (seccomp_load(ctx) < 0) { perror("SECCOMP_LOAD"); exit(1); }
 	seccomp_release(ctx);
@@ -96,17 +140,20 @@ int child_fn(void *arg) {
 	char buf[1];
 	read(ca->ready_pipe[0], buf, 1);
 	close(ca->ready_pipe[0]);
+        
+        unshare(CLONE_NEWNS);
+        mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
 
-	/* Jail the filesystem — from here on, / means /srv/sandbox-rootfs.
-	 * The process cannot see anything above this directory. */
-	chroot("/srv/sandbox-rootfs");
-	chdir("/");
-	mount("proc", "/proc", "proc", 0, NULL);
-	chmod("/etc/shadow", 0000); // remove user permission
-	chmod("/proc/kcore", 0000); // removes process read permissions
-
-	char *args[] = { ca->program, NULL };
+        chroot("/srv/sandbox-rootfs");
+        chdir("/");
+        
+        mount("proc", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, "hidepid=2");
+        chmod("/etc/shadow", 0000); // remove user permission
+        
+	char *args[] = { ca->program, "-i", NULL };
 	char *env[]  = { "PATH=/usr/bin:/bin", NULL };
+	//setsid();
+	//ioctl(0, TIOCSCTTY, 1);
 	apply_seccomp_filter();
 	execve(ca->program, args, env);
 	perror("execve");
@@ -196,7 +243,7 @@ int main(int argc, char* argv[]) {
 		 * CLONE_NEWUSER — child gets its own user/group ID mappings */
 
 		int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
-			CLONE_NEWIPC | SIGCHLD; //REMOVED CLONE_NEWUSER for netowrk troublshooting
+			CLONE_NEWIPC | CLONE_NEWUSER | SIGCHLD; //REMOVED CLONE_NEWUSER for netowrk troublshooting
 
 		// required for ping to work, currently runs on each launch for consistency
 		chmod("/srv/sandbox-rootfs/bin/ping", 04755);
