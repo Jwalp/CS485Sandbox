@@ -14,6 +14,7 @@
 #include <seccomp.h>
 #include <sys/uio.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <errno.h> // temporary for debugging
 
 #define STACK_SIZE (1024 * 1024)
@@ -147,17 +148,41 @@ int child_fn(void *arg) {
         chroot("/srv/sandbox-rootfs");
         chdir("/");
         
+        umount2("/sys/kernel/debug", MNT_DETACH);  // detach if present
+        
         mount("proc", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, "hidepid=2");
+        chmod("/proc/kcore", 0000);
+        chmod("/proc/kmsg", 0000);
         chmod("/etc/shadow", 0000); // remove user permission
         
-	char *args[] = { ca->program, "-i", NULL };
+	char *args[] = { ca->program, NULL };
 	char *env[]  = { "PATH=/usr/bin:/bin", NULL };
 	//setsid();
 	//ioctl(0, TIOCSCTTY, 1);
-	apply_seccomp_filter();
-	execve(ca->program, args, env);
-	perror("execve");
-	return 1;
+	
+	struct rlimit rl;
+
+        // CPU time limit: 5 seconds
+        rl.rlim_cur = 5;
+        rl.rlim_max = 6;
+        setrlimit(RLIMIT_CPU, &rl);
+
+        // Memory limit: 256MB virtual address space
+        rl.rlim_cur = 256UL * 1024 * 1024;
+        rl.rlim_max = 256UL * 1024 * 1024;
+        setrlimit(RLIMIT_AS, &rl);
+
+        // Process limit: max 50 child processes
+        rl.rlim_cur = 50;
+        rl.rlim_max = 50;
+	setrlimit(RLIMIT_NPROC, &rl);
+	
+        setresgid(65534, 65534, 65534);
+        setresuid(65534, 65534, 65534);
+        apply_seccomp_filter();
+        execve(ca->program, args, env);
+        perror("execve");
+        return 1;
 }
 
 int main(int argc, char* argv[]) {
@@ -265,6 +290,7 @@ int main(int argc, char* argv[]) {
 		}
 		fclose(f);
 
+                system("rm -f /srv/sandbox-rootfs/tmp/*.txt /srv/sandbox-rootfs/tmp/ipc_out.txt /srv/sandbox-rootfs/tmp/fdcheck.txt");
 		pid_t pid = clone(child_fn, stack + STACK_SIZE, flags, &ca);
 		if (pid < 0) { perror("clone"); free(stack); return 1; }
 
@@ -273,9 +299,9 @@ int main(int argc, char* argv[]) {
 
 		/* Write uid_map: maps uid 0 inside sandbox to our real uid outside.
 		 * Format: <inside_uid> <outside_uid> <count> */
-		char path[256], map[64];
+		char path[256], map[128];
 		snprintf(path, sizeof(path), "/proc/%d/uid_map", pid);
-		snprintf(map,  sizeof(map),  "0 %d 1\n", getuid());
+		snprintf(map,  sizeof(map),  "0 %d 1\n65534 65534 1\n", getuid());
 		int fd = open(path, O_WRONLY);
 		write(fd, map, strlen(map));
 		close(fd);
@@ -289,7 +315,7 @@ int main(int argc, char* argv[]) {
 
 		/* Write gid_map: same idea as uid_map but for group IDs */
 		snprintf(path, sizeof(path), "/proc/%d/gid_map", pid);
-		snprintf(map,  sizeof(map),  "0 %d 1\n", getgid());
+		snprintf(map,  sizeof(map),  "0 %d 1\n65534 65534 1\n", getgid());
 		fd = open(path, O_WRONLY);
 		write(fd, map, strlen(map));
 		close(fd);
